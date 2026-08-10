@@ -7,6 +7,7 @@
 <link rel="icon" type="image/png" href="logo2.png">
 <link rel="shortcut icon" type="image/png" href="logo2.png">
 <link rel="apple-touch-icon" href="logo2.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --red:#E52427; --red-dark:#c41e21; --yellow:#FFB800; --orange:#FF9900;
@@ -302,30 +303,38 @@
 <div id="toast"></div>
 
 <script>
-/* ---------- STATE ---------- */
-const KEY='casa_acerola_finance_v1';
-let state = load();
+/* ---------- SUPABASE ---------- */
+const SUPABASE_URL='https://mtzkcgnjbphemrpeywkr.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10emtjZ25qYnBoZW1ycGV5d2tyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzNTk2MzAsImV4cCI6MjEwMTkzNTYzMH0.a_SdWP0eWK1MdIS_2hooJdfNnFbOy8pSipQY56PO_As';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-function defaultState(){
-  return {
-    initial:0,
-    categories:[
-      {id:id(),name:'Frutas'},
-      {id:id(),name:'Embalagens'},
-      {id:id(),name:'Água / Luz'},
-    ],
-    transactions:[]
-  };
+/* ---------- STATE ----------
+   transacoes.categoria é texto plano (origem da entrada OU nome da
+   categoria de gasto) — por isso as transações locais guardam
+   `categoria` em vez de `catId`, casando por nome com state.categories. */
+let state = { initial:0, categories:[], transactions:[] };
+
+async function loadState(){
+  const [catsRes, txRes, cfgRes] = await Promise.all([
+    supabase.from('categorias').select('*').order('id'),
+    supabase.from('transacoes').select('*').order('id'),
+    supabase.from('config').select('*').eq('chave','saldo_inicial').maybeSingle()
+  ]);
+  if(catsRes.error) console.error('Erro ao carregar categorias:',catsRes.error);
+  if(txRes.error) console.error('Erro ao carregar transações:',txRes.error);
+  if(cfgRes.error) console.error('Erro ao carregar saldo inicial:',cfgRes.error);
+
+  state.categories=(catsRes.data||[]).map(c=>({id:c.id,name:c.nome}));
+  state.transactions=(txRes.data||[]).map(t=>({
+    id:t.id, type:t.tipo, categoria:t.categoria,
+    amount:Number(t.valor), date:t.data, payment:t.forma_pagamento
+  }));
+  state.initial = cfgRes.data ? Number(cfgRes.data.valor) : 0;
+
+  if(catsRes.error || txRes.error || cfgRes.error){
+    toast('Erro ao carregar dados do Supabase — veja o console');
+  }
 }
-function load(){
-  try{
-    const d=JSON.parse(localStorage.getItem(KEY));
-    if(d) return d;
-  }catch(e){}
-  return defaultState();
-}
-function save(){ localStorage.setItem(KEY,JSON.stringify(state)); }
-function id(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 /* ---------- HELPERS ---------- */
 const fmt = v => 'R$ '+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -415,7 +424,7 @@ function renderCats(){
   const grid=document.getElementById('catGrid');
   grid.innerHTML='';
   state.categories.forEach(c=>{
-    const txs=state.transactions.filter(t=>t.type==='out' && t.catId===c.id);
+    const txs=state.transactions.filter(t=>t.type==='out' && t.categoria===c.name);
     const total=txs.filter(t=>inRange(t.date)).reduce((s,t)=>s+t.amount,0);
     const count=txs.filter(t=>inRange(t.date)).length;
     const el=document.createElement('div');
@@ -445,13 +454,13 @@ function renderCats(){
 
 function renderHist(){
   const body=document.getElementById('histBody');
-  const list=[...state.transactions].filter(t=>inRange(t.date)).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  const list=[...state.transactions].filter(t=>inRange(t.date)).sort((a,b)=>b.date.localeCompare(a.date)||(Number(b.id)-Number(a.id)));
   if(!list.length){
     body.innerHTML='<tr><td colspan="6" class="empty">Nenhuma transação no período.</td></tr>';
     return;
   }
   body.innerHTML=list.map(t=>{
-    const catName = t.type==='in' ? t.cat : (state.categories.find(c=>c.id===t.catId)?.name||'—');
+    const catName = t.categoria || '—';
     const payLabel = t.type==='in' ? esc(t.payment||'Dinheiro') : '—';
     return `<tr>
       <td>${fmtDate(t.date)}</td>
@@ -468,73 +477,121 @@ function fmtDate(s){ const [y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 /* ---------- ACTIONS ---------- */
-function addEntrada(){
+async function addEntrada(){
   const v=parseFloat(document.getElementById('inValor').value);
-  const cat=document.getElementById('inCat').value;
+  const categoria=document.getElementById('inCat').value;
   const data=document.getElementById('inData').value||todayStr();
   const payment=document.getElementById('inPayment').value;
   if(!v||v<=0) return toast('Informe um valor válido');
-  state.transactions.push({id:id(),type:'in',amount:v,cat,date:data,payment});
+  const {data:row,error}=await supabase.from('transacoes')
+    .insert({tipo:'in',categoria,valor:v,data,forma_pagamento:payment})
+    .select().single();
+  if(error){ console.error(error); return toast('Erro ao salvar entrada no Supabase'); }
+  state.transactions.push({id:row.id,type:'in',categoria,amount:v,date:data,payment});
   document.getElementById('inValor').value='';
-  save(); render(); toast('Entrada registrada ✔');
+  render(); toast('Entrada registrada ✔');
 }
 
-function addGasto(catId){
+async function addGasto(catId){
   const inp=document.getElementById('ci_'+catId);
   const v=parseFloat(inp.value);
   if(!v||v<=0) return toast('Informe um valor válido');
-  state.transactions.push({id:id(),type:'out',amount:v,catId,date:todayStr()});
+  const cat=state.categories.find(c=>String(c.id)===String(catId));
+  const data=todayStr();
+  const {data:row,error}=await supabase.from('transacoes')
+    .insert({tipo:'out',categoria:cat.name,valor:v,data,forma_pagamento:''})
+    .select().single();
+  if(error){ console.error(error); return toast('Erro ao salvar gasto no Supabase'); }
+  state.transactions.push({id:row.id,type:'out',categoria:cat.name,amount:v,date:data,payment:''});
   inp.value='';
-  save(); render(); toast('Gasto registrado ✔');
+  render(); toast('Gasto registrado ✔');
 }
 
 function addCat(){
-  modalPrompt('Nova Categoria','Nome da categoria de despesa','', name=>{
-    if(!name.trim()) return;
-    state.categories.push({id:id(),name:name.trim()});
-    save(); render(); toast('Categoria criada ✔');
+  modalPrompt('Nova Categoria','Nome da categoria de despesa','', async name=>{
+    const nome=name.trim();
+    if(!nome) return;
+    const {data:row,error}=await supabase.from('categorias')
+      .insert({nome,tipo:'out'}).select().single();
+    if(error){ console.error(error); return toast('Erro ao criar categoria no Supabase'); }
+    state.categories.push({id:row.id,name:row.nome});
+    render(); toast('Categoria criada ✔');
   });
 }
 
 function editCat(cid){
-  const c=state.categories.find(x=>x.id===cid);
-  modalPrompt('Editar Categoria','Novo nome',c.name, name=>{
-    if(!name.trim()) return;
-    c.name=name.trim(); save(); render(); toast('Categoria atualizada ✔');
+  const c=state.categories.find(x=>String(x.id)===String(cid));
+  modalPrompt('Editar Categoria','Novo nome',c.name, async name=>{
+    const novoNome=name.trim();
+    if(!novoNome) return;
+    const antigoNome=c.name;
+    const {error:e1}=await supabase.from('categorias').update({nome:novoNome}).eq('id',cid);
+    if(e1){ console.error(e1); return toast('Erro ao atualizar categoria no Supabase'); }
+    // Mantém o histórico consistente: renomeia também nos lançamentos já gravados
+    const {error:e2}=await supabase.from('transacoes').update({categoria:novoNome})
+      .eq('categoria',antigoNome).eq('tipo','out');
+    if(e2) console.error(e2);
+    c.name=novoNome;
+    state.transactions.forEach(t=>{ if(t.type==='out' && t.categoria===antigoNome) t.categoria=novoNome; });
+    render(); toast('Categoria atualizada ✔');
   });
 }
 
 function delCat(cid){
-  const c=state.categories.find(x=>x.id===cid);
-  const n=state.transactions.filter(t=>t.catId===cid).length;
+  const c=state.categories.find(x=>String(x.id)===String(cid));
+  const n=state.transactions.filter(t=>t.type==='out' && t.categoria===c.name).length;
   modalConfirm('Excluir categoria',
     `Excluir "<b>${esc(c.name)}</b>"?${n?`<br><br>Isso também removerá <b>${n}</b> lançamento(s) associado(s).`:''}`,
-    ()=>{
-      state.categories=state.categories.filter(x=>x.id!==cid);
-      state.transactions=state.transactions.filter(t=>t.catId!==cid);
-      save(); render(); toast('Categoria excluída');
+    async ()=>{
+      const {error:e1}=await supabase.from('transacoes').delete().eq('categoria',c.name).eq('tipo','out');
+      if(e1){ console.error(e1); return toast('Erro ao excluir lançamentos no Supabase'); }
+      const {error:e2}=await supabase.from('categorias').delete().eq('id',cid);
+      if(e2){ console.error(e2); return toast('Erro ao excluir categoria no Supabase'); }
+      state.categories=state.categories.filter(x=>String(x.id)!==String(cid));
+      state.transactions=state.transactions.filter(t=>!(t.type==='out' && t.categoria===c.name));
+      render(); toast('Categoria excluída');
     });
 }
 
-function delTx(tid){
-  state.transactions=state.transactions.filter(t=>t.id!==tid);
-  save(); render(); toast('Lançamento excluído');
+async function delTx(tid){
+  const {error}=await supabase.from('transacoes').delete().eq('id',tid);
+  if(error){ console.error(error); return toast('Erro ao excluir lançamento no Supabase'); }
+  state.transactions=state.transactions.filter(t=>String(t.id)!==String(tid));
+  render(); toast('Lançamento excluído');
 }
 
 function editInitial(){
-  modalPrompt('Saldo Inicial','Valor em caixa (R$)',state.initial, v=>{
+  modalPrompt('Saldo Inicial','Valor em caixa (R$)',state.initial, async v=>{
     const n=parseFloat(v);
     if(isNaN(n)) return toast('Valor inválido');
-    state.initial=n; save(); render(); toast('Saldo inicial atualizado ✔');
+    const {error}=await supabase.from('config').update({valor:n}).eq('chave','saldo_inicial');
+    if(error){ console.error(error); return toast('Erro ao salvar saldo inicial no Supabase'); }
+    state.initial=n; render(); toast('Saldo inicial atualizado ✔');
   },'number');
 }
 
-function resetAll(){
+async function resetAll(){
   const ok=confirm('Tem certeza que deseja apagar todos os lançamentos, categorias e restaurar os saldos?');
   if(!ok) return;
-  localStorage.removeItem(KEY);
-  state=defaultState();
-  save();
+
+  const {error:e1}=await supabase.from('transacoes').delete().gte('id',0);
+  if(e1){ console.error(e1); return toast('Erro ao limpar transações no Supabase'); }
+  const {error:e2}=await supabase.from('categorias').delete().gte('id',0);
+  if(e2){ console.error(e2); return toast('Erro ao limpar categorias no Supabase'); }
+  const {error:e3}=await supabase.from('config').update({valor:0}).eq('chave','saldo_inicial');
+  if(e3) console.error(e3);
+  const {data:novasCats,error:e4}=await supabase.from('categorias').insert([
+    {nome:'Frutas',tipo:'out'},
+    {nome:'Embalagens',tipo:'out'},
+    {nome:'Água / Luz',tipo:'out'}
+  ]).select();
+  if(e4) console.error(e4);
+
+  state={
+    initial:0,
+    categories:(novasCats||[]).map(c=>({id:c.id,name:c.nome})),
+    transactions:[]
+  };
   currentFilter='all';
   [...document.querySelectorAll('#filters button')].forEach(x=>x.classList.toggle('active',x.dataset.f==='all'));
   document.getElementById('inData').value=todayStr();
@@ -583,8 +640,12 @@ function toast(msg){
 }
 
 /* ---------- INIT ---------- */
-document.getElementById('inData').value=todayStr();
-render();
+async function init(){
+  document.getElementById('inData').value=todayStr();
+  await loadState();
+  render();
+}
+init();
 </script>
 </body>
 </html>
