@@ -111,8 +111,9 @@
   .icon-btn:hover{background:var(--bg);color:var(--red)}
   .cat-total{font-size:24px;font-weight:800;color:var(--red-in);margin:6px 0 12px}
   .cat-total small{font-size:12px;color:var(--muted);font-weight:600;display:block;text-transform:uppercase;letter-spacing:.5px}
-  .cat-input{display:flex;gap:6px;margin-top:auto}
-  .cat-input input{flex:1}
+  .cat-input{display:flex;flex-direction:column;gap:6px;margin-top:auto}
+  .cat-input-row{display:flex;gap:6px}
+  .cat-input-row input{flex:1;min-width:0}
   .cat-count{font-size:12px;color:var(--muted);margin-top:8px}
   .add-cat{border:2px dashed var(--border);background:transparent;display:flex;align-items:center;
     justify-content:center;min-height:160px;cursor:pointer;color:var(--muted);font-weight:600;transition:.15s}
@@ -304,6 +305,10 @@
       </div>
       <button class="btn btn-green btn-add" onclick="addEntrada()">+ Adicionar</button>
     </div>
+    <div style="margin-top:10px">
+      <label>Descrição / Observação</label>
+      <input type="text" id="inDesc" placeholder="Ex: Venda na feira de sábado">
+    </div>
   </div>
 
   <!-- RESUMO DO DIA (MÉTODOS DE PAGAMENTO) -->
@@ -398,7 +403,8 @@ async function loadState(){
   state.categories=(catsRes.data||[]).map(c=>({id:c.id,name:c.nome}));
   state.transactions=(txRes.data||[]).map(t=>({
     id:t.id, type:t.tipo, categoria:t.categoria,
-    amount:Number(t.valor), date:t.data, payment:t.forma_pagamento
+    amount:Number(t.valor), date:t.data, payment:t.forma_pagamento,
+    descricao:t.descricao||''
   }));
   state.initial = cfgRes.data ? Number(cfgRes.data.valor) : 0;
 
@@ -510,8 +516,12 @@ function renderCats(){
       </div>
       <div class="cat-total"><small>Gasto ${FILTER_LABEL[currentFilter]}</small>${fmt(total)}</div>
       <div class="cat-input">
-        <input type="number" placeholder="Valor R$" step="0.01" min="0" id="ci_${c.id}">
-        <button class="btn btn-red btn-sm" onclick="addGasto('${c.id}')">+</button>
+        <div class="cat-input-row">
+          <input type="number" placeholder="Valor R$" step="0.01" min="0" id="ci_${c.id}">
+          <input type="date" id="cdate_${c.id}" value="${todayStr()}">
+        </div>
+        <input type="text" placeholder="Descrição (opcional)" id="cdesc_${c.id}">
+        <button class="btn btn-red btn-sm" style="width:100%" onclick="addGasto('${c.id}')">+ Adicionar Gasto</button>
       </div>
       <div class="cat-count">${count} lançamento(s) no período</div>`;
     grid.appendChild(el);
@@ -532,11 +542,12 @@ function renderHist(){
   }
   body.innerHTML=list.map(t=>{
     const catName = t.categoria || '—';
+    const descHtml = t.descricao ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(t.descricao)}</div>` : '';
     const payLabel = t.type==='in' ? esc(t.payment||'Dinheiro') : '—';
     return `<tr>
       <td>${fmtDate(t.date)}</td>
       <td><span class="tag ${t.type}">${t.type==='in'?'Entrada':'Gasto'}</span></td>
-      <td>${esc(catName)}</td>
+      <td>${esc(catName)}${descHtml}</td>
       <td>${t.type==='in'?`<span class="pay-tag">${payLabel}</span>`:payLabel}</td>
       <td style="text-align:right" class="${t.type==='in'?'amt-in':'amt-out'}">${t.type==='in'?'+':'-'} ${fmt(t.amount)}</td>
       <td style="text-align:right"><button class="del-btn" title="Excluir" onclick="delTx('${t.id}')">✕</button></td>
@@ -553,13 +564,15 @@ async function addEntrada(){
   const categoria=document.getElementById('inCat').value;
   const data=document.getElementById('inData').value||todayStr();
   const payment=document.getElementById('inPayment').value;
+  const descricao=document.getElementById('inDesc').value.trim();
   if(!v||v<=0) return toast('Informe um valor válido');
   const {data:row,error}=await sb.from('transacoes')
-    .insert({tipo:'in',categoria,valor:v,data,forma_pagamento:payment})
+    .insert({tipo:'in',categoria,valor:v,data,forma_pagamento:payment,descricao})
     .select().single();
   if(error){ console.error(error); return toast('Erro ao salvar entrada no Supabase'); }
-  state.transactions.push({id:row.id,type:'in',categoria,amount:v,date:data,payment});
+  state.transactions.push({id:row.id,type:'in',categoria,amount:v,date:data,payment,descricao});
   document.getElementById('inValor').value='';
+  document.getElementById('inDesc').value='';
   render(); toast('Entrada registrada ✔');
 }
 
@@ -568,13 +581,18 @@ async function addGasto(catId){
   const v=parseFloat(inp.value);
   if(!v||v<=0) return toast('Informe um valor válido');
   const cat=state.categories.find(c=>String(c.id)===String(catId));
-  const data=todayStr();
+  const dateInp=document.getElementById('cdate_'+catId);
+  const descInp=document.getElementById('cdesc_'+catId);
+  const data=dateInp.value||todayStr();
+  const descricao=descInp.value.trim();
   const {data:row,error}=await sb.from('transacoes')
-    .insert({tipo:'out',categoria:cat.name,valor:v,data,forma_pagamento:''})
+    .insert({tipo:'out',categoria:cat.name,valor:v,data,forma_pagamento:'',descricao})
     .select().single();
   if(error){ console.error(error); return toast('Erro ao salvar gasto no Supabase'); }
-  state.transactions.push({id:row.id,type:'out',categoria:cat.name,amount:v,date:data,payment:''});
+  state.transactions.push({id:row.id,type:'out',categoria:cat.name,amount:v,date:data,payment:'',descricao});
   inp.value='';
+  descInp.value='';
+  dateInp.value=todayStr();
   render(); toast('Gasto registrado ✔');
 }
 
