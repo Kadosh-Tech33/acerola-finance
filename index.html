@@ -189,10 +189,10 @@
   <div class="section-title">Visão Geral</div>
   <div class="filters-bar">
     <div class="filters" id="filters">
-      <button data-f="today">Hoje</button>
+      <button data-f="today" class="active">Hoje</button>
       <button data-f="week">Esta Semana</button>
       <button data-f="month">Este Mês</button>
-      <button data-f="all" class="active">Todos</button>
+      <button data-f="all">Todos</button>
     </div>
     <button class="btn-reset" onclick="resetAll()">🗑️ Limpar Tudo / Resetar Dados</button>
   </div>
@@ -358,7 +358,7 @@ function parseLocalDate(dateStr){
   return new Date(y, m-1, d); // sempre meia-noite no fuso LOCAL
 }
 
-let currentFilter='all';
+let currentFilter='today';
 const FILTER_LABEL={today:'(Hoje)',week:'(Semana)',month:'(Mês)',all:'(Todos)'};
 
 function inRange(dateStr){
