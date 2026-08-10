@@ -168,10 +168,6 @@
   .auth-brand{text-align:center;margin-bottom:24px}
   .auth-brand h1{font-size:20px;font-weight:800;color:var(--text)}
   .auth-brand span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
-  .auth-tabs{display:flex;gap:4px;background:var(--bg);border-radius:999px;padding:4px;margin-bottom:20px}
-  .auth-tabs button{flex:1;padding:8px;border:none;background:transparent;border-radius:999px;font-weight:700;
-    font-size:13px;color:var(--muted);cursor:pointer;transition:.15s}
-  .auth-tabs button.active{background:var(--red);color:#fff}
   .auth-form label{margin-top:12px}
   .auth-form label:first-child{margin-top:0}
   .auth-msg{margin-top:14px;font-size:13px;text-align:center;min-height:18px}
@@ -201,23 +197,12 @@
       <h1>Casa da Acerola</h1>
       <span>E Congelados</span>
     </div>
-    <div class="auth-tabs">
-      <button type="button" class="active" data-tab="login">Entrar</button>
-      <button type="button" data-tab="signup">Criar Conta</button>
-    </div>
     <form id="loginForm" class="auth-form">
       <label>E-mail</label>
       <input type="email" id="loginEmail" autocomplete="email" required>
       <label>Senha</label>
       <input type="password" id="loginPassword" autocomplete="current-password" required>
       <button type="submit" class="btn btn-green" style="width:100%;margin-top:18px">Entrar</button>
-    </form>
-    <form id="signupForm" class="auth-form" style="display:none">
-      <label>E-mail</label>
-      <input type="email" id="signupEmail" autocomplete="email" required>
-      <label>Senha</label>
-      <input type="password" id="signupPassword" autocomplete="new-password" minlength="6" required>
-      <button type="submit" class="btn btn-green" style="width:100%;margin-top:18px">Criar Conta</button>
     </form>
     <p class="auth-msg" id="authMsg"></p>
   </div>
@@ -372,30 +357,16 @@
 <div id="toast"></div>
 
 <script>
-/* ---------- AUTH TABS (UI pura, roda antes do Supabase para nunca ficar refém dele) ---------- */
+/* ---------- AUTH UI (referências DOM, roda antes do Supabase para nunca ficar refém dele) ---------- */
 const authScreen=document.getElementById('authScreen');
 const appRoot=document.getElementById('appRoot');
 const loginForm=document.getElementById('loginForm');
-const signupForm=document.getElementById('signupForm');
 
 function authMsg(text,type){
   const el=document.getElementById('authMsg');
   el.textContent=text||'';
   el.className='auth-msg'+(type?(' '+type):'');
 }
-
-function switchAuthTab(tab){
-  document.querySelectorAll('.auth-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
-  const isLogin=tab==='login';
-  loginForm.style.display=isLogin?'':'none';
-  signupForm.style.display=isLogin?'none':'';
-  loginForm.reset();
-  signupForm.reset();
-  authMsg('');
-}
-document.querySelectorAll('.auth-tabs button').forEach(btn=>{
-  btn.addEventListener('click',()=>switchAuthTab(btn.dataset.tab));
-});
 
 /* ---------- SUPABASE ---------- */
 const SUPABASE_URL='https://mtzkcgnjbphemrpeywkr.supabase.co';
@@ -751,22 +722,6 @@ loginForm.addEventListener('submit', async e=>{
   authMsg('');
 });
 
-signupForm.addEventListener('submit', async e=>{
-  e.preventDefault();
-  if(!sb) return authMsg('Sem conexão com o servidor.','error');
-  const email=document.getElementById('signupEmail').value.trim();
-  const password=document.getElementById('signupPassword').value;
-  authMsg('Criando conta...');
-  const {data,error}=await sb.auth.signUp({email,password});
-  if(error){ authMsg(error.message,'error'); return; }
-  if(data.session){
-    authMsg('');
-  }else{
-    authMsg('Conta criada! Verifique seu e-mail para confirmar o acesso antes de entrar.','success');
-    switchAuthTab('login');
-  }
-});
-
 async function logout(){
   if(!sb) return;
   await sb.auth.signOut();
@@ -787,7 +742,6 @@ if(sb) sb.auth.onAuthStateChange(async (event, session)=>{
     authScreen.style.display='flex';
     dataLoaded=false;
     loginForm.reset();
-    signupForm.reset();
   }
 });
 
