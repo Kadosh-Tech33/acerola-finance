@@ -156,9 +156,75 @@
     .brand h1{font-size:18px}
     .kpi .value{font-size:24px}
   }
+
+  /* AUTH */
+  .auth-wrap{position:fixed;inset:0;z-index:60;min-height:100vh;display:flex;align-items:center;
+    justify-content:center;background:var(--bg);padding:20px}
+  .auth-card{background:var(--card);border-radius:16px;padding:32px;max-width:380px;width:100%;
+    box-shadow:var(--shadow-lg);border:1px solid var(--border)}
+  .auth-logo{width:64px;height:64px;border-radius:50%;background:var(--bg);display:flex;align-items:center;
+    justify-content:center;margin:0 auto 12px}
+  .auth-logo svg{width:44px;height:44px}
+  .auth-brand{text-align:center;margin-bottom:24px}
+  .auth-brand h1{font-size:20px;font-weight:800;color:var(--text)}
+  .auth-brand span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
+  .auth-tabs{display:flex;gap:4px;background:var(--bg);border-radius:999px;padding:4px;margin-bottom:20px}
+  .auth-tabs button{flex:1;padding:8px;border:none;background:transparent;border-radius:999px;font-weight:700;
+    font-size:13px;color:var(--muted);cursor:pointer;transition:.15s}
+  .auth-tabs button.active{background:var(--red);color:#fff}
+  .auth-form label{margin-top:12px}
+  .auth-form label:first-child{margin-top:0}
+  .auth-msg{margin-top:14px;font-size:13px;text-align:center;min-height:18px}
+  .auth-msg.error{color:var(--red-in)}
+  .auth-msg.success{color:var(--green)}
+
+  /* LOGOUT */
+  .btn-logout{margin-top:8px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);
+    color:#fff;padding:4px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;transition:.15s}
+  .btn-logout:hover{background:rgba(255,255,255,.28)}
 </style>
 </head>
 <body>
+
+<!-- AUTH SCREEN -->
+<div class="auth-wrap" id="authScreen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-logo">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 55 L50 28 L60 35 L60 25 L72 25 L72 44 L85 55" fill="none" stroke="#1F2937" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+          <ellipse cx="44" cy="52" rx="10" ry="11" fill="#FFB800"/>
+          <ellipse cx="55" cy="58" rx="10" ry="11" fill="#E52427"/>
+          <path d="M44 41 Q42 35 40 33 M55 47 Q57 40 60 38" stroke="#8B4513" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h1>Casa da Acerola</h1>
+      <span>E Congelados</span>
+    </div>
+    <div class="auth-tabs">
+      <button type="button" class="active" data-tab="login">Entrar</button>
+      <button type="button" data-tab="signup">Criar Conta</button>
+    </div>
+    <form id="loginForm" class="auth-form">
+      <label>E-mail</label>
+      <input type="email" id="loginEmail" autocomplete="email" required>
+      <label>Senha</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-green" style="width:100%;margin-top:18px">Entrar</button>
+    </form>
+    <form id="signupForm" class="auth-form" style="display:none">
+      <label>E-mail</label>
+      <input type="email" id="signupEmail" autocomplete="email" required>
+      <label>Senha</label>
+      <input type="password" id="signupPassword" autocomplete="new-password" minlength="6" required>
+      <button type="submit" class="btn btn-green" style="width:100%;margin-top:18px">Criar Conta</button>
+    </form>
+    <p class="auth-msg" id="authMsg"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appRoot" style="display:none">
 
 <header>
   <div class="header-inner">
@@ -179,6 +245,7 @@
     <div class="header-balance">
       <small>Saldo Atual em Caixa</small>
       <strong id="hdrBalance">R$ 0,00</strong>
+      <button class="btn-logout" onclick="logout()">Sair</button>
     </div>
   </div>
 </header>
@@ -300,13 +367,46 @@
   </div>
 </div>
 
+</div><!-- /#appRoot -->
+
 <div id="toast"></div>
 
 <script>
+/* ---------- AUTH TABS (UI pura, roda antes do Supabase para nunca ficar refém dele) ---------- */
+const authScreen=document.getElementById('authScreen');
+const appRoot=document.getElementById('appRoot');
+const loginForm=document.getElementById('loginForm');
+const signupForm=document.getElementById('signupForm');
+
+function authMsg(text,type){
+  const el=document.getElementById('authMsg');
+  el.textContent=text||'';
+  el.className='auth-msg'+(type?(' '+type):'');
+}
+
+function switchAuthTab(tab){
+  document.querySelectorAll('.auth-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  const isLogin=tab==='login';
+  loginForm.style.display=isLogin?'':'none';
+  signupForm.style.display=isLogin?'none':'';
+  loginForm.reset();
+  signupForm.reset();
+  authMsg('');
+}
+document.querySelectorAll('.auth-tabs button').forEach(btn=>{
+  btn.addEventListener('click',()=>switchAuthTab(btn.dataset.tab));
+});
+
 /* ---------- SUPABASE ---------- */
 const SUPABASE_URL='https://mtzkcgnjbphemrpeywkr.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10emtjZ25qYnBoZW1ycGV5d2tyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzNTk2MzAsImV4cCI6MjEwMTkzNTYzMH0.a_SdWP0eWK1MdIS_2hooJdfNnFbOy8pSipQY56PO_As';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let sb=null;
+try{
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}catch(e){
+  console.error('Falha ao inicializar o cliente Supabase:',e);
+  authMsg('Não foi possível conectar ao servidor. Verifique sua internet e recarregue a página.','error');
+}
 
 /* ---------- STATE ----------
    transacoes.categoria é texto plano (origem da entrada OU nome da
@@ -316,9 +416,9 @@ let state = { initial:0, categories:[], transactions:[] };
 
 async function loadState(){
   const [catsRes, txRes, cfgRes] = await Promise.all([
-    supabase.from('categorias').select('*').order('id'),
-    supabase.from('transacoes').select('*').order('id'),
-    supabase.from('config').select('*').eq('chave','saldo_inicial').maybeSingle()
+    sb.from('categorias').select('*').order('id'),
+    sb.from('transacoes').select('*').order('id'),
+    sb.from('config').select('*').eq('chave','saldo_inicial').maybeSingle()
   ]);
   if(catsRes.error) console.error('Erro ao carregar categorias:',catsRes.error);
   if(txRes.error) console.error('Erro ao carregar transações:',txRes.error);
@@ -483,7 +583,7 @@ async function addEntrada(){
   const data=document.getElementById('inData').value||todayStr();
   const payment=document.getElementById('inPayment').value;
   if(!v||v<=0) return toast('Informe um valor válido');
-  const {data:row,error}=await supabase.from('transacoes')
+  const {data:row,error}=await sb.from('transacoes')
     .insert({tipo:'in',categoria,valor:v,data,forma_pagamento:payment})
     .select().single();
   if(error){ console.error(error); return toast('Erro ao salvar entrada no Supabase'); }
@@ -498,7 +598,7 @@ async function addGasto(catId){
   if(!v||v<=0) return toast('Informe um valor válido');
   const cat=state.categories.find(c=>String(c.id)===String(catId));
   const data=todayStr();
-  const {data:row,error}=await supabase.from('transacoes')
+  const {data:row,error}=await sb.from('transacoes')
     .insert({tipo:'out',categoria:cat.name,valor:v,data,forma_pagamento:''})
     .select().single();
   if(error){ console.error(error); return toast('Erro ao salvar gasto no Supabase'); }
@@ -511,7 +611,7 @@ function addCat(){
   modalPrompt('Nova Categoria','Nome da categoria de despesa','', async name=>{
     const nome=name.trim();
     if(!nome) return;
-    const {data:row,error}=await supabase.from('categorias')
+    const {data:row,error}=await sb.from('categorias')
       .insert({nome,tipo:'out'}).select().single();
     if(error){ console.error(error); return toast('Erro ao criar categoria no Supabase'); }
     state.categories.push({id:row.id,name:row.nome});
@@ -525,10 +625,10 @@ function editCat(cid){
     const novoNome=name.trim();
     if(!novoNome) return;
     const antigoNome=c.name;
-    const {error:e1}=await supabase.from('categorias').update({nome:novoNome}).eq('id',cid);
+    const {error:e1}=await sb.from('categorias').update({nome:novoNome}).eq('id',cid);
     if(e1){ console.error(e1); return toast('Erro ao atualizar categoria no Supabase'); }
     // Mantém o histórico consistente: renomeia também nos lançamentos já gravados
-    const {error:e2}=await supabase.from('transacoes').update({categoria:novoNome})
+    const {error:e2}=await sb.from('transacoes').update({categoria:novoNome})
       .eq('categoria',antigoNome).eq('tipo','out');
     if(e2) console.error(e2);
     c.name=novoNome;
@@ -543,9 +643,9 @@ function delCat(cid){
   modalConfirm('Excluir categoria',
     `Excluir "<b>${esc(c.name)}</b>"?${n?`<br><br>Isso também removerá <b>${n}</b> lançamento(s) associado(s).`:''}`,
     async ()=>{
-      const {error:e1}=await supabase.from('transacoes').delete().eq('categoria',c.name).eq('tipo','out');
+      const {error:e1}=await sb.from('transacoes').delete().eq('categoria',c.name).eq('tipo','out');
       if(e1){ console.error(e1); return toast('Erro ao excluir lançamentos no Supabase'); }
-      const {error:e2}=await supabase.from('categorias').delete().eq('id',cid);
+      const {error:e2}=await sb.from('categorias').delete().eq('id',cid);
       if(e2){ console.error(e2); return toast('Erro ao excluir categoria no Supabase'); }
       state.categories=state.categories.filter(x=>String(x.id)!==String(cid));
       state.transactions=state.transactions.filter(t=>!(t.type==='out' && t.categoria===c.name));
@@ -554,7 +654,7 @@ function delCat(cid){
 }
 
 async function delTx(tid){
-  const {error}=await supabase.from('transacoes').delete().eq('id',tid);
+  const {error}=await sb.from('transacoes').delete().eq('id',tid);
   if(error){ console.error(error); return toast('Erro ao excluir lançamento no Supabase'); }
   state.transactions=state.transactions.filter(t=>String(t.id)!==String(tid));
   render(); toast('Lançamento excluído');
@@ -564,7 +664,7 @@ function editInitial(){
   modalPrompt('Saldo Inicial','Valor em caixa (R$)',state.initial, async v=>{
     const n=parseFloat(v);
     if(isNaN(n)) return toast('Valor inválido');
-    const {error}=await supabase.from('config').update({valor:n}).eq('chave','saldo_inicial');
+    const {error}=await sb.from('config').update({valor:n}).eq('chave','saldo_inicial');
     if(error){ console.error(error); return toast('Erro ao salvar saldo inicial no Supabase'); }
     state.initial=n; render(); toast('Saldo inicial atualizado ✔');
   },'number');
@@ -574,13 +674,13 @@ async function resetAll(){
   const ok=confirm('Tem certeza que deseja apagar todos os lançamentos, categorias e restaurar os saldos?');
   if(!ok) return;
 
-  const {error:e1}=await supabase.from('transacoes').delete().gte('id',0);
+  const {error:e1}=await sb.from('transacoes').delete().gte('id',0);
   if(e1){ console.error(e1); return toast('Erro ao limpar transações no Supabase'); }
-  const {error:e2}=await supabase.from('categorias').delete().gte('id',0);
+  const {error:e2}=await sb.from('categorias').delete().gte('id',0);
   if(e2){ console.error(e2); return toast('Erro ao limpar categorias no Supabase'); }
-  const {error:e3}=await supabase.from('config').update({valor:0}).eq('chave','saldo_inicial');
+  const {error:e3}=await sb.from('config').update({valor:0}).eq('chave','saldo_inicial');
   if(e3) console.error(e3);
-  const {data:novasCats,error:e4}=await supabase.from('categorias').insert([
+  const {data:novasCats,error:e4}=await sb.from('categorias').insert([
     {nome:'Frutas',tipo:'out'},
     {nome:'Embalagens',tipo:'out'},
     {nome:'Água / Luz',tipo:'out'}
@@ -639,13 +739,60 @@ function toast(msg){
   toastT=setTimeout(()=>t.classList.remove('show'),2200);
 }
 
-/* ---------- INIT ---------- */
-async function init(){
-  document.getElementById('inData').value=todayStr();
-  await loadState();
-  render();
+/* ---------- AUTH (login/cadastro/sessão) ---------- */
+loginForm.addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!sb) return authMsg('Sem conexão com o servidor.','error');
+  const email=document.getElementById('loginEmail').value.trim();
+  const password=document.getElementById('loginPassword').value;
+  authMsg('Entrando...');
+  const {error}=await sb.auth.signInWithPassword({email,password});
+  if(error){ authMsg(error.message,'error'); return; }
+  authMsg('');
+});
+
+signupForm.addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!sb) return authMsg('Sem conexão com o servidor.','error');
+  const email=document.getElementById('signupEmail').value.trim();
+  const password=document.getElementById('signupPassword').value;
+  authMsg('Criando conta...');
+  const {data,error}=await sb.auth.signUp({email,password});
+  if(error){ authMsg(error.message,'error'); return; }
+  if(data.session){
+    authMsg('');
+  }else{
+    authMsg('Conta criada! Verifique seu e-mail para confirmar o acesso antes de entrar.','success');
+    switchAuthTab('login');
+  }
+});
+
+async function logout(){
+  if(!sb) return;
+  await sb.auth.signOut();
 }
-init();
+
+let dataLoaded=false;
+if(sb) sb.auth.onAuthStateChange(async (event, session)=>{
+  if(session){
+    authScreen.style.display='none';
+    appRoot.style.display='';
+    if(!dataLoaded || event==='SIGNED_IN'){
+      await loadState();
+      render();
+      dataLoaded=true;
+    }
+  }else{
+    appRoot.style.display='none';
+    authScreen.style.display='flex';
+    dataLoaded=false;
+    loginForm.reset();
+    signupForm.reset();
+  }
+});
+
+/* ---------- INIT ---------- */
+document.getElementById('inData').value=todayStr();
 </script>
 </body>
 </html>
