@@ -90,6 +90,16 @@
   .btn-sm{padding:6px 12px;font-size:13px}
   .btn-add{align-self:end}
 
+  /* MULTI-PAYMENT ENTRADA FORM */
+  .form-row-2col{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+  .payment-line{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:8px;align-items:center}
+  .payment-line .pl-remove{background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:18px;
+    padding:6px 8px;border-radius:6px}
+  .payment-line .pl-remove:hover{color:var(--red-in);background:var(--red-bg)}
+  .payment-total{font-weight:700;font-size:15px}
+  .payment-total span{color:var(--green)}
+  @media(max-width:640px){.form-row-2col{grid-template-columns:1fr}}
+
   /* PAYMENT SUMMARY */
   .pay-summary{display:flex;gap:16px;flex-wrap:wrap}
   .pay-stat{flex:1;min-width:140px;background:var(--bg);border-radius:12px;padding:14px 16px}
@@ -115,6 +125,8 @@
   .cat-input-row{display:flex;gap:6px}
   .cat-input-row input{flex:1;min-width:0}
   .cat-count{font-size:12px;color:var(--muted);margin-top:8px}
+  .cat-count-link{cursor:pointer;width:fit-content}
+  .cat-count-link:hover{color:var(--red);text-decoration:underline}
   .add-cat{border:2px dashed var(--border);background:transparent;display:flex;align-items:center;
     justify-content:center;min-height:160px;cursor:pointer;color:var(--muted);font-weight:600;transition:.15s}
   .add-cat:hover{border-color:var(--red);color:var(--red);background:#fff}
@@ -141,8 +153,20 @@
     justify-content:center;z-index:100;padding:16px}
   .modal-bg.show{display:flex}
   .modal{background:#fff;border-radius:16px;padding:24px;max-width:360px;width:100%;box-shadow:var(--shadow-lg)}
+  .modal.modal-wide{max-width:480px}
   .modal h3{margin-bottom:16px;font-size:18px}
   .modal .actions{display:flex;gap:10px;margin-top:20px}
+
+  /* TX LIST MODAL */
+  .tx-modal-total{font-size:13px;font-weight:600;color:var(--muted);margin-bottom:14px}
+  .tx-modal-total strong{color:var(--red-in);font-size:16px}
+  .tx-modal-list{max-height:340px;overflow-y:auto;display:flex;flex-direction:column}
+  .tx-modal-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .tx-modal-item:last-child{border-bottom:none}
+  .tx-modal-info{flex:1;min-width:0}
+  .tx-modal-date{font-size:13px;font-weight:600}
+  .tx-modal-desc{font-size:12px;color:var(--muted);margin-top:2px;word-break:break-word}
+  .tx-modal-amt{font-weight:700;color:var(--red-in);white-space:nowrap}
   .modal .actions .btn{flex:1}
 
   /* TOAST */
@@ -276,11 +300,7 @@
   <!-- ENTRADA -->
   <div class="section-title">Registrar Entrada / Venda</div>
   <div class="card">
-    <div class="form-row">
-      <div>
-        <label>Valor (R$)</label>
-        <input type="number" id="inValor" placeholder="0,00" step="0.01" min="0">
-      </div>
+    <div class="form-row-2col">
       <div>
         <label>Origem</label>
         <select id="inCat">
@@ -295,19 +315,22 @@
         <label>Data</label>
         <input type="date" id="inData">
       </div>
-      <div>
-        <label>Pagamento</label>
-        <select id="inPayment">
-          <option value="Dinheiro">Dinheiro</option>
-          <option value="Pix">Pix</option>
-          <option value="Cartão">Cartão de Crédito/Débito</option>
-        </select>
-      </div>
-      <button class="btn btn-green btn-add" onclick="addEntrada()">+ Adicionar</button>
     </div>
-    <div style="margin-top:10px">
+
+    <div style="margin-top:14px">
+      <label>Formas de Pagamento</label>
+      <div id="paymentLines"></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addPaymentLine()">+ Adicionar forma de pagamento</button>
+    </div>
+
+    <div style="margin-top:14px">
       <label>Descrição / Observação</label>
       <input type="text" id="inDesc" placeholder="Ex: Venda na feira de sábado">
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:10px">
+      <div class="payment-total">Total: <span id="paymentTotal">R$ 0,00</span></div>
+      <button class="btn btn-green" onclick="addEntrada()">+ Adicionar</button>
     </div>
   </div>
 
@@ -523,7 +546,7 @@ function renderCats(){
         <input type="text" placeholder="Descrição (opcional)" id="cdesc_${c.id}">
         <button class="btn btn-red btn-sm" style="width:100%" onclick="addGasto('${c.id}')">+ Adicionar Gasto</button>
       </div>
-      <div class="cat-count">${count} lançamento(s) no período</div>`;
+      <div class="cat-count cat-count-link" onclick="openCatTxModal('${c.id}')">${count} lançamento(s) no período</div>`;
     grid.appendChild(el);
   });
   const add=document.createElement('div');
@@ -558,22 +581,80 @@ function renderHist(){
 function fmtDate(s){ const [y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+/* ---------- LINHAS DE PAGAMENTO (Registrar Entrada / Venda) ---------- */
+function createPaymentLineEl(){
+  const div=document.createElement('div');
+  div.className='payment-line';
+  div.innerHTML=`
+    <input type="number" class="pl-valor" placeholder="0,00" step="0.01" min="0">
+    <select class="pl-payment">
+      <option value="Dinheiro">Dinheiro</option>
+      <option value="Pix">Pix</option>
+      <option value="Cartão">Cartão de Crédito/Débito</option>
+    </select>
+    <button type="button" class="pl-remove" title="Remover">✕</button>`;
+  return div;
+}
+
+function addPaymentLine(){
+  document.getElementById('paymentLines').appendChild(createPaymentLineEl());
+  updatePaymentLinesUI();
+}
+
+function removePaymentLine(btn){
+  const container=document.getElementById('paymentLines');
+  if(container.children.length<=1) return;
+  btn.closest('.payment-line').remove();
+  updatePaymentLinesUI();
+}
+
+function resetPaymentLines(){
+  const container=document.getElementById('paymentLines');
+  container.innerHTML='';
+  container.appendChild(createPaymentLineEl());
+  updatePaymentLinesUI();
+}
+
+function updatePaymentLinesUI(){
+  const lines=[...document.getElementById('paymentLines').querySelectorAll('.payment-line')];
+  lines.forEach(l=>{ l.querySelector('.pl-remove').style.visibility = lines.length>1 ? 'visible':'hidden'; });
+  updatePaymentTotal();
+}
+
+function updatePaymentTotal(){
+  const total=[...document.getElementById('paymentLines').querySelectorAll('.pl-valor')]
+    .reduce((s,i)=>s+(parseFloat(i.value)||0),0);
+  document.getElementById('paymentTotal').textContent=fmt(total);
+}
+
+document.getElementById('paymentLines').addEventListener('input',e=>{
+  if(e.target.classList.contains('pl-valor')) updatePaymentTotal();
+});
+document.getElementById('paymentLines').addEventListener('click',e=>{
+  const btn=e.target.closest('.pl-remove');
+  if(btn) removePaymentLine(btn);
+});
+
 /* ---------- ACTIONS ---------- */
 async function addEntrada(){
-  const v=parseFloat(document.getElementById('inValor').value);
   const categoria=document.getElementById('inCat').value;
   const data=document.getElementById('inData').value||todayStr();
-  const payment=document.getElementById('inPayment').value;
   const descricao=document.getElementById('inDesc').value.trim();
-  if(!v||v<=0) return toast('Informe um valor válido');
-  const {data:row,error}=await sb.from('transacoes')
-    .insert({tipo:'in',categoria,valor:v,data,forma_pagamento:payment,descricao})
-    .select().single();
+  const linhas=[...document.getElementById('paymentLines').querySelectorAll('.payment-line')]
+    .map(l=>({ valor:parseFloat(l.querySelector('.pl-valor').value), payment:l.querySelector('.pl-payment').value }))
+    .filter(l=>l.valor && l.valor>0);
+  if(!linhas.length) return toast('Informe um valor válido');
+
+  const rows=linhas.map(l=>({tipo:'in',categoria,valor:l.valor,data,forma_pagamento:l.payment,descricao}));
+  const {data:inseridas,error}=await sb.from('transacoes').insert(rows).select();
   if(error){ console.error(error); return toast('Erro ao salvar entrada no Supabase'); }
-  state.transactions.push({id:row.id,type:'in',categoria,amount:v,date:data,payment,descricao});
-  document.getElementById('inValor').value='';
+  inseridas.forEach(row=>{
+    state.transactions.push({id:row.id,type:'in',categoria,amount:Number(row.valor),date:row.data,payment:row.forma_pagamento,descricao:row.descricao||''});
+  });
   document.getElementById('inDesc').value='';
-  render(); toast('Entrada registrada ✔');
+  resetPaymentLines();
+  render();
+  toast(linhas.length>1?'Entradas registradas ✔':'Entrada registrada ✔');
 }
 
 async function addGasto(catId){
@@ -684,8 +765,52 @@ async function resetAll(){
   currentFilter='all';
   [...document.querySelectorAll('#filters button')].forEach(x=>x.classList.toggle('active',x.dataset.f==='all'));
   document.getElementById('inData').value=todayStr();
+  document.getElementById('inDesc').value='';
+  resetPaymentLines();
   render();
   toast('Dados resetados ✔');
+}
+
+/* ---------- LANÇAMENTOS DA CATEGORIA (modal de listagem) ---------- */
+let currentTxModalCatId=null;
+
+function openCatTxModal(catId){
+  currentTxModalCatId=catId;
+  const cat=state.categories.find(c=>String(c.id)===String(catId));
+  if(!cat) return;
+  document.getElementById('modalTitle').textContent=`Lançamentos — ${cat.name}`;
+  renderCatTxModalBody();
+  document.querySelector('#modalBg .modal').classList.add('modal-wide');
+  const ok=document.getElementById('modalOk');
+  ok.style.display='none';
+  document.querySelector('#modalBg .actions .btn-ghost').textContent='Fechar';
+  mBg.classList.add('show');
+}
+
+function renderCatTxModalBody(){
+  const cat=state.categories.find(c=>String(c.id)===String(currentTxModalCatId));
+  if(!cat) return;
+  const txs=state.transactions
+    .filter(t=>t.type==='out' && t.categoria===cat.name && inRange(t.date))
+    .sort((a,b)=>b.date.localeCompare(a.date)||(Number(b.id)-Number(a.id)));
+  const total=txs.reduce((s,t)=>s+t.amount,0);
+  const list=txs.length ? txs.map(t=>`
+    <div class="tx-modal-item">
+      <div class="tx-modal-info">
+        <div class="tx-modal-date">${fmtDate(t.date)}</div>
+        ${t.descricao?`<div class="tx-modal-desc">${esc(t.descricao)}</div>`:''}
+      </div>
+      <div class="tx-modal-amt">${fmt(t.amount)}</div>
+      <button class="del-btn" title="Excluir" onclick="delCatTx('${t.id}')">✕</button>
+    </div>`).join('') : '<p class="empty">Nenhum lançamento no período.</p>';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="tx-modal-total">Total no período: <strong>${fmt(total)}</strong></div>
+    <div class="tx-modal-list">${list}</div>`;
+}
+
+async function delCatTx(tid){
+  await delTx(tid);
+  if(currentTxModalCatId!==null && mBg.classList.contains('show')) renderCatTxModalBody();
 }
 
 /* ---------- FILTERS ---------- */
@@ -694,26 +819,39 @@ document.getElementById('filters').addEventListener('click',e=>{
   currentFilter=b.dataset.f;
   [...document.querySelectorAll('#filters button')].forEach(x=>x.classList.toggle('active',x===b));
   render();
+  if(currentTxModalCatId!==null && mBg.classList.contains('show')) renderCatTxModalBody();
 });
 
 /* ---------- MODAL ---------- */
 const mBg=document.getElementById('modalBg');
-function closeModal(){ mBg.classList.remove('show'); }
+function closeModal(){
+  mBg.classList.remove('show');
+  currentTxModalCatId=null;
+  document.querySelector('#modalBg .modal').classList.remove('modal-wide');
+}
 function modalPrompt(title,label,val,cb,type='text'){
+  currentTxModalCatId=null;
+  document.querySelector('#modalBg .modal').classList.remove('modal-wide');
   document.getElementById('modalTitle').textContent=title;
   document.getElementById('modalBody').innerHTML=`<label>${label}</label><input type="${type}" id="mInput" value="${esc(val)}" ${type==='number'?'step="0.01"':''}>`;
   const ok=document.getElementById('modalOk');
+  ok.style.display='';
   ok.textContent='Salvar';
   ok.onclick=()=>{ cb(document.getElementById('mInput').value); closeModal(); };
+  document.querySelector('#modalBg .actions .btn-ghost').textContent='Cancelar';
   mBg.classList.add('show');
   setTimeout(()=>{const i=document.getElementById('mInput');i.focus();i.select&&i.select();},50);
 }
 function modalConfirm(title,html,cb){
+  currentTxModalCatId=null;
+  document.querySelector('#modalBg .modal').classList.remove('modal-wide');
   document.getElementById('modalTitle').textContent=title;
   document.getElementById('modalBody').innerHTML=`<p style="color:var(--muted)">${html}</p>`;
   const ok=document.getElementById('modalOk');
+  ok.style.display='';
   ok.textContent='Excluir';
   ok.onclick=()=>{ cb(); closeModal(); };
+  document.querySelector('#modalBg .actions .btn-ghost').textContent='Cancelar';
   mBg.classList.add('show');
 }
 mBg.addEventListener('click',e=>{ if(e.target===mBg) closeModal(); });
@@ -765,6 +903,7 @@ if(sb) sb.auth.onAuthStateChange(async (event, session)=>{
 
 /* ---------- INIT ---------- */
 document.getElementById('inData').value=todayStr();
+resetPaymentLines();
 </script>
 </body>
 </html>
